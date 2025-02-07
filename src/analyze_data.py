@@ -2,52 +2,50 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import pprint
 import seaborn as sns
+from data_utils import load_data
 
-# load the data
-df = pd.read_csv(r'..\daily_weather_data.csv')
 
-# Pretty print the data
-pp = pprint.PrettyPrinter(indent=4)
+# TODO(jana): Don't hardcode input file path, use argparser
 
-unique_cities = df["city"].unique().tolist()
-print("Available cities in the dataset:")
-for city in unique_cities:
-    print(f"- {city}")
+if __name__ == '__main__':
+    filepath = r'..\daily_weather_data.csv'
 
-city_counts = df["city"].value_counts().to_dict()
-pp.pprint(f"Number of records per city: {city_counts}") 
+    # Load the data
+    df = load_data(filepath)
 
-num_unique_cities = df["city"].nunique()
-pp.pprint(f"Number of unique cities: {num_unique_cities}")
+    # Pretty print the data
+    pp = pprint.PrettyPrinter(indent=4)
 
-# Filling all tavg, tmin, tmax, wdir, wspd, pres missing values with 0 for now
-df.fillna(0, inplace=True)
-#consider forward filling missing values, it will fill missing values with the most recent valid (non-null) value from the previous row.
-# df.fillna(method="ffill", inplace=True)  # Forward fill missing values
+    unique_cities = df['city'].unique().tolist()
+    print('Available cities in the dataset:')
+    for city in unique_cities:
+        print(f'- {city}')
 
-# improve data type: date is currently an object (string). it should be converted to datetime.
-df["date"] = pd.to_datetime(df["date"], format="%d-%m-%Y", dayfirst=True)
-print(df["date"].dtype)
+    city_counts = df['city'].value_counts().to_dict()
+    pp.pprint(f'Number of records per city: {city_counts}') 
 
-# Visualize the data
-# Example: Plot temperature trends for a specific city
-city_name = "Belgrade"
-city_data = df[df["city"] == city_name]
+    num_unique_cities = df['city'].nunique()
+    pp.pprint(f'Number of unique cities: {num_unique_cities}')
 
-plt.figure(figsize=(12, 6))
-sns.lineplot(x=city_data["date"], y=city_data["tavg"], label=city_name)
-plt.xticks(rotation=45)
-plt.title(f"Temperature Trends in {city_name}")
-plt.xlabel("Date")
-plt.ylabel("Temperature (°C)")
-plt.legend()
-plt.show()
+    # Visualize the data
+    # Example: Plot temperature trends for a specific city
+    city_name = 'Belgrade'
+    city_data = df[df['city'] == city_name]
 
-plt.figure(figsize=(12, 6))
-sns.scatterplot(x=city_data["date"], y=city_data["tavg"], label=city_name, color="red")
-plt.xticks(rotation=45)
-plt.title(f"Temperature Trends in {city_name}")
-plt.xlabel("Date")
-plt.ylabel("Temperature (°C)")
-plt.legend()
-plt.show()
+    plt.figure(figsize=(12, 6))
+    sns.lineplot(x=city_data['date'], y=city_data['tavg'], label=city_name)
+    plt.xticks(rotation=45)
+    plt.title(f'Temperature Trends in {city_name}')
+    plt.xlabel('Date')
+    plt.ylabel('Temperature (°C)')
+    plt.legend()
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+    sns.scatterplot(x=city_data['date'], y=city_data['tavg'], label=city_name, color='red')
+    plt.xticks(rotation=45)
+    plt.title(f'Temperature Trends in {city_name}')
+    plt.xlabel('Date')
+    plt.ylabel('Temperature (°C)')
+    plt.legend()
+    plt.show()
