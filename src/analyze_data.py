@@ -3,15 +3,19 @@ import matplotlib.pyplot as plt
 import pprint
 import seaborn as sns
 from data_utils import load_data
+import argparse
 
 
-# TODO(jana): Don't hardcode input file path, use argparser
+# TODO(jana): Don't hardcode input file path, use argparser -> DONE
 
 if __name__ == '__main__':
-    filepath = r'..\daily_weather_data.csv'
+    parser = argparse.ArgumentParser(description="Analyze .csv file")
+    parser.add_argument("filename", help="The name of the file to process")
+    args = parser.parse_args()
+    #filepath = r'..\daily_weather_data.csv'
 
     # Load the data
-    df = load_data(filepath)
+    df = load_data(args.filename)
 
     # Pretty print the data
     pp = pprint.PrettyPrinter(indent=4)
