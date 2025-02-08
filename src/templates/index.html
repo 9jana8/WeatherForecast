@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Query</title>
+</head>
+<body>
+    <h1>Weather Query</h1>
+    <form id="weatherForm">
+        <input type="text" id="userQuery" placeholder="Enter your query" required>
+        <button type="submit">Submit</button>
+    </form>
+    <div id="response"></div>
+
+    <script>
+        const form = document.getElementById('weatherForm');
+        const responseDiv = document.getElementById('response');
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            const userQuery = document.getElementById('userQuery').value;
+            
+            fetch('http://127.0.0.1:5000/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ user_query: userQuery }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.response) {
+                    responseDiv.innerHTML = `<p><strong>Response:</strong> ${data.response}</p>`;
+                } else {
+                    responseDiv.innerHTML = `<p><strong>Error:</strong> ${data.error}</p>`;
+                }
+            })
+            .catch(error => {
+                responseDiv.innerHTML = `<p><strong>Error:</strong> ${error}</p>`;
+            });
+        });
+    </script>
+</body>
+</html>
