@@ -4,14 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Weather Query</title>
+    <link rel="stylesheet" href="static/css/styles.css">
 </head>
 <body>
-    <h1>Weather Query</h1>
-    <form id="weatherForm">
-        <input type="text" id="userQuery" placeholder="Enter your query" required>
-        <button type="submit">Submit</button>
-    </form>
-    <div id="response"></div>
+    <div class="container">
+        <h1>Talk to Your Personal Assistant and Discover the Weather Forecast You’re Interested In!</h1>
+        <form id="weatherForm">
+            <textarea id="userQuery" placeholder="Enter your query" required></textarea>
+            <button type="submit">Submit</button>
+        </form>
+        <div id="response"></div>
+    </div>
 
     <script>
         const form = document.getElementById('weatherForm');
@@ -29,7 +32,12 @@
                 },
                 body: JSON.stringify({ user_query: userQuery }),
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.response) {
                     responseDiv.innerHTML = `<p><strong>Response:</strong> ${data.response}</p>`;
