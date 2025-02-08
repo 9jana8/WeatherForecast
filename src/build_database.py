@@ -1,12 +1,14 @@
 import sqlite3
 from data_utils import load_data
-
+import argparse
 
 if __name__ == '__main__':
-    filepath = r'..\daily_weather_data.csv'
-
     # Load the data
-    df = load_data(filepath)
+    parser = argparse.ArgumentParser(description="Build SQLite database from .csv file")
+    parser.add_argument("filename", help="The name of the file to process")
+    args = parser.parse_args()
+    df = load_data(args.filename)
+    print("database is being built")
 
     connection = sqlite3.connect('weather.db')
     cursor = connection.cursor()
@@ -56,6 +58,7 @@ if __name__ == '__main__':
         VALUES (?, ?, ?, ?)""",
         (row['city'], row['country'], row['Latitude'], row['Longitude']))
     connection.commit()
+    print("Cities table is filled")
 
     # Insert data to WeatherData. Whenever you need to pass a single parameter to SQL query make it a TUPLE.
     for index, row in df.iterrows():
@@ -67,3 +70,4 @@ if __name__ == '__main__':
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (city_id, row['date'].strftime('%Y-%m-%d'), row['tavg'], row['tmin'], row['tmax'], row['wdir'], row['wspd'], row['pres']))
     connection.commit()
+    print("WeatherData table is filled")
