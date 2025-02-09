@@ -1,23 +1,16 @@
 import sqlite3
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-from huggingface_hub import InferenceClient
-import requests
-import torch
 from flask import Flask, request, jsonify, render_template
 import re
 import difflib
+from datetime import datetime
 
 app = Flask(__name__)
 
 generator = pipeline("text-generation", model="gpt2")
-
-prompt = """
-You are a weather data assistant. Only answer with exact numerical weather data. 
-Provide the minimum and maximum temperature for Belgrade between 2019-07-20 and 2019-07-30.
-Do NOT add any additional details beyond temperature.
-"""
     
-# First function to query the temperature in a city on a specific date   
+    
+# Function 1
 def query_temperature_in_city(
         city: str,
         date: str) -> float:
@@ -34,7 +27,8 @@ def query_temperature_in_city(
     connection.close()
     return temperature[0] if temperature else None
 
-# Second function to query the maximum temperature in a city in a specific time span
+
+# Function 2
 def query_max_temperature_in_time_span_per_city(
         city: str,
         date_from: str,
@@ -52,6 +46,8 @@ def query_max_temperature_in_time_span_per_city(
     connection.close()
     return max_temperature if max_temperature else None
 
+
+# Function 3
 def query_min_temperature_in_time_span_per_city(
         city: str,
         date_from: str,
@@ -69,45 +65,91 @@ def query_min_temperature_in_time_span_per_city(
     connection.close()
     return min_temperature if min_temperature else None
 
+
+def query_city_comparison(city1: str, city2: str, date: str) -> str:
+    connection = sqlite3.connect("weather.db")
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT Cities.city, WeatherData.date, WeatherData.temperature_max 
+        FROM WeatherData
+        JOIN Cities ON WeatherData.city_id = Cities.id
+        WHERE Cities.city IN (?, ?)
+        AND WeatherData.date = ?
+        LIMIT 10
+        """, (city1, city2, date))
+    rows = cursor.fetchall()
+    connection.close()
+    if len(rows) != 2:
+        return "Data not available for both cities on the given date."
+    temp1 = rows[0][1]
+    temp2 = rows[1][1]
+    if temp1 > temp2:
+        return f"{rows[0][0]} had a higher temperature ({temp1}°C) than {rows[1][0]} ({temp2}°C) on {date}."
+    elif temp2 > temp1:
+        return f"{rows[1][0]} had a higher temperature ({temp2}°C) than {rows[0][0]} ({temp1}°C) on {date}."
+    else:
+        return f"Both {city1} and {city2} had the same temperature ({temp1}°C) on {date}."
+    
+
+# For HF GPT-2 model hallucination detection
 def is_response_trustworthy(original, generated):
     generated_text = generated[0]["generated_text"]  
     similarity = difflib.SequenceMatcher(None, original, generated_text).ratio()
     return similarity > 0.8
 
+
 # Structure API response
 def generate_human_response(user_query) -> str:
     result = extract_city_and_date(user_query)
-    print(f"Result from extract_city_and_date: {result}")  # Debugging line
+    found_cities, found_dates = result
+    key_words = query_key_words(user_query)
+    answer = ""
 
-    if len(result) == 3:
-        city, date_from, date_to = result
-        print(f"City: {city}, Date From: {date_from}, Date To: {date_to}")
-        # Check out which function was called
-        min_temperature = query_min_temperature_in_time_span_per_city(city, date_from, date_to)
-        max_temperature = query_max_temperature_in_time_span_per_city(city, date_from, date_to)
-        print(f"Min Temperature: {min_temperature}, Max Temperature: {max_temperature}")
-        if min_temperature is not None and max_temperature is not None:
-            answer = f"The minimum temperature in {city} between {date_from} and {date_to} was {min_temperature}°C, and the maximum temperature was {max_temperature}°C."
-        else:
-            answer = f"Sorry, I couldn't find the data for the temperatures in {city} during that time period."
-    elif len(result) == 2:
-        city, date = result
-        print(f"City: {city}, Date: {date}")
+    # If querying max/min temperature in a time span
+    if len(found_cities)==1 and len(found_dates)==2:
+        city = found_cities[0]
+        date_from = found_dates[0]
+        date_to = found_dates[1]
+
+        if 'maximum' in key_words:
+            max_temperature = query_max_temperature_in_time_span_per_city(city, date_from, date_to)
+            if max_temperature is not None:
+                answer = f"The maximum temperature in {city} between {date_from} and {date_to} was {max_temperature}°C."
+
+        elif 'minimum' in key_words:
+            min_temperature = query_min_temperature_in_time_span_per_city(city, date_from, date_to)
+            if min_temperature is not None:
+                answer = f"The minimum temperature in {city} between {date_from} and {date_to} was {min_temperature}°C."
+
+    # If querying highest temperature between two cities
+    elif len(found_cities)==2 and len(found_dates)==1:
+        city1, city2 = found_cities[:2]
+        date = found_dates[0]
+        if all(word in key_words for word in ['highest', 'temperature', 'between']):
+            return query_city_comparison(city1, city2, date)
+        
+    # If querying temperature in a single city on a specific date
+    elif len(found_cities)==1 and len(found_dates)==1:
+        city = found_cities[0]
+        date = found_dates[0]
         temperature = query_temperature_in_city(city, date)
         if temperature is not None:
             answer = f"The temperature in {city} on {date} was {temperature}°C."
-        else:
-            answer = f"Sorry, I couldn't find the data for the temperature in {city} on {date}."
+
+    # If the query was not understood      
     else:
-        return "Sorry, I couldn't understand the query. Please provide a city and a date."
+        return "Sorry, I couldn't understand the query. Please provide at least one city and a date."
     
+    # Generate a response with GPT-2
     response = generator(f'Answer: {answer}', max_length=100, truncation=True)
     response_text = response[0]["generated_text"]
 
+    # Check trustworthiness and return final response
     if is_response_trustworthy(answer, response):
         return response_text
     else:
         return answer  # Use the original database response if GPT-2 hallucinates
+
 
 # Get lists of possible cities
 def get_unique_cities():
@@ -118,32 +160,58 @@ def get_unique_cities():
     connection.close()
     return cities
 
+
 # Extract City and Date from User Input
 def extract_city_and_date(user_query: str):
     cities = get_unique_cities()
-    found_city = None
+    found_cities = []
     found_dates = []
+
     for city in cities:
         if city.lower() in user_query.lower():
-            found_city = city
+            found_cities.append(city)
             break
-    date_pattern = r'\b(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\w+ \d{1,2}, \d{4})\b'
+
+    date_pattern = r'(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|\w+ \d{1,2}, \d{4})'
     date_matches = re.findall(date_pattern, user_query)
 
-    if len(date_matches) >= 1:
-        found_dates.append(date_matches[0])
-    if len(date_matches) >= 2:
-        found_dates.append(date_matches[1])
-  
-    if len(found_dates) == 2:
-        return found_city, found_dates[0], found_dates[1]
-    
-    elif len(found_dates) == 1:
-        return found_city, found_dates[0]
+    for date_match in date_matches:
+        converted = convert_date_format(date_match)
+        if converted:
+            found_dates.append(converted)
+
+    return found_cities, found_dates
+
+
+# Helping function to detect YYYY-MM-DD, MM-DD-YYYY, and Month DD, YYYY date formats for extract_city_and_date()    
+def convert_date_format(date_str: str) -> str:
+    try: 
+        return datetime.strptime(date_str, "%B %d, %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        try: 
+            return datetime.strptime(date_str, "%m-%d-%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            try:
+                return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
+            except ValueError:
+                return None
+
+
+# Helping function to detect which query is needed    
+def query_key_words(user_query: str):
+    key_words = ['maximum', 'minimum', 'highest', 'temperature', 'between', 'freezing', 'degrees']
+    found_words = []
+    for word in key_words:
+        if word in user_query.lower():
+            found_words.append(word)
+            return found_words
+    return False
+
 
 @app.route("/")
 def home():
     return render_template("index.html")
+
 
 @app.route("/query", methods=["POST"])
 def query():
@@ -154,21 +222,20 @@ def query():
     user_query = data["user_query"]
     
     result = extract_city_and_date(user_query=user_query)
-    if not result and len(result) < 2:
-        return jsonify({"error": "Could not find city and date in query"}), 400
+    if result is None or len(result) < 2:
+        return jsonify({"error": "results is none or either city or date were not provided"}), 400
 
     response_text = generate_human_response(user_query=user_query)
 
     return jsonify({"response": response_text})
 
+
 if __name__ == '__main__':
     app.run(debug=True)
 
-    # Connect to database
     connection = sqlite3.connect("weather.db")
     cursor = connection.cursor()
 
-    # Query data from SQL
     cursor.execute("""
         SELECT Cities.city, WeatherData.date, WeatherData.temperature_avg
         FROM WeatherData
