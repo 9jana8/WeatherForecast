@@ -1,19 +1,15 @@
 import sqlite3
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-from flask import Flask, request, jsonify, render_template
 import re
 import difflib
 from datetime import datetime
 
-app = Flask(__name__)
-
 generator = pipeline("text-generation", model="gpt2")
     
-    
-# Function 1
 def query_temperature_in_city(
         city: str,
         date: str) -> float:
+    # asert da proveri da li je ovo u dobrom formatu
     connection = sqlite3.connect("weather.db")
     cursor = connection.cursor()
     cursor.execute("""
@@ -28,7 +24,6 @@ def query_temperature_in_city(
     return temperature[0] if temperature else None
 
 
-# Function 2
 def query_max_temperature_in_time_span_per_city(
         city: str,
         date_from: str,
@@ -47,7 +42,6 @@ def query_max_temperature_in_time_span_per_city(
     return max_temperature if max_temperature else None
 
 
-# Function 3
 def query_min_temperature_in_time_span_per_city(
         city: str,
         date_from: str,
@@ -75,7 +69,6 @@ def query_city_comparison(city1: str, city2: str, date: str) -> str:
         JOIN Cities ON WeatherData.city_id = Cities.id
         WHERE Cities.city IN (?, ?)
         AND WeatherData.date = ?
-        LIMIT 10
         """, (city1, city2, date))
     rows = cursor.fetchall()
     connection.close()
@@ -91,21 +84,20 @@ def query_city_comparison(city1: str, city2: str, date: str) -> str:
         return f"Both {city1} and {city2} had the same temperature ({temp1}°C) on {date}."
     
 
-# For HF GPT-2 model hallucination detection
-def is_response_trustworthy(original, generated):
+
+def is_response_trustworthy(original, generated) -> bool:
     generated_text = generated[0]["generated_text"]  
     similarity = difflib.SequenceMatcher(None, original, generated_text).ratio()
     return similarity > 0.8
 
 
-# Structure API response
+
 def generate_human_response(user_query) -> str:
     result = extract_city_and_date(user_query)
     found_cities, found_dates = result
     key_words = query_key_words(user_query)
     answer = ""
 
-    # If querying max/min temperature in a time span
     if len(found_cities)==1 and len(found_dates)==2:
         city = found_cities[0]
         date_from = found_dates[0]
@@ -121,37 +113,32 @@ def generate_human_response(user_query) -> str:
             if min_temperature is not None:
                 answer = f"The minimum temperature in {city} between {date_from} and {date_to} was {min_temperature}°C."
 
-    # If querying highest temperature between two cities
     elif len(found_cities)==2 and len(found_dates)==1:
         city1, city2 = found_cities[:2]
         date = found_dates[0]
         if all(word in key_words for word in ['highest', 'temperature', 'between']):
             return query_city_comparison(city1, city2, date)
         
-    # If querying temperature in a single city on a specific date
     elif len(found_cities)==1 and len(found_dates)==1:
         city = found_cities[0]
         date = found_dates[0]
         temperature = query_temperature_in_city(city, date)
         if temperature is not None:
             answer = f"The temperature in {city} on {date} was {temperature}°C."
-
-    # If the query was not understood      
+    
     else:
         return "Sorry, I couldn't understand the query. Please provide at least one city and a date."
     
-    # Generate a response with GPT-2
     response = generator(f'Answer: {answer}', max_length=100, truncation=True)
     response_text = response[0]["generated_text"]
 
-    # Check trustworthiness and return final response
     if is_response_trustworthy(answer, response):
         return response_text
     else:
         return answer  # Use the original database response if GPT-2 hallucinates
 
 
-# Get lists of possible cities
+
 def get_unique_cities():
     connection = sqlite3.connect("weather.db")
     cursor = connection.cursor()
@@ -161,7 +148,6 @@ def get_unique_cities():
     return cities
 
 
-# Extract City and Date from User Input
 def extract_city_and_date(user_query: str):
     cities = get_unique_cities()
     found_cities = []
@@ -208,59 +194,3 @@ def query_key_words(user_query: str):
     return False
 
 
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-
-@app.route("/query", methods=["POST"])
-def query():
-    data = request.get_json()
-    if not data or "user_query" not in data:
-        return jsonify({"error": "Missing 'user_query' in JSON data"}), 400
-
-    user_query = data["user_query"]
-    
-    result = extract_city_and_date(user_query=user_query)
-    if result is None or len(result) < 2:
-        return jsonify({"error": "results is none or either city or date were not provided"}), 400
-
-    response_text = generate_human_response(user_query=user_query)
-
-    return jsonify({"response": response_text})
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-    connection = sqlite3.connect("weather.db")
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        SELECT Cities.city, WeatherData.date, WeatherData.temperature_avg
-        FROM WeatherData
-        JOIN Cities ON WeatherData.city_id = Cities.id
-        WHERE Cities.city = 'Belgrade'
-        LIMIT 10
-        """)
-    rows = cursor.fetchall()
-    for row in rows:
-        print(row)
-
-    connection.close()
-
-    connection = sqlite3.connect("weather.db")
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        SELECT Cities.city, WeatherData.date, WeatherData.temperature_min, WeatherData.temperature_max
-        FROM WeatherData
-        JOIN Cities ON WeatherData.city_id = Cities.id
-        WHERE Cities.city = 'Belgrade'
-        AND WeatherData.date BETWEEN '2018-01-01' AND '2018-01-31'
-    """)
-    rows = cursor.fetchall()
-    for row in rows:
-        print(row)
-
-    connection.close()
