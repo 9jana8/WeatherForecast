@@ -13,7 +13,6 @@ if __name__ == '__main__':
     connection = sqlite3.connect('weather.db')
     cursor = connection.cursor()
 
-    # FYI: SQLite does not automatically check whether the city_id exists in the Cities table. By default, foreign key constraints (which ensure that referenced values exist in the parent table) are not enforced in SQLite unless explicitly enabled.
     cursor.execute('PRAGMA foreign_keys = ON;')
 
     # Create Cities table

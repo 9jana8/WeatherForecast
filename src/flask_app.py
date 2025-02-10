@@ -1,18 +1,9 @@
 from flask import Flask, request, jsonify, render_template
-import sqlite3
 from query_database import extract_city_and_date, generate_human_response
 import argparse
+from db_utils import create_connection
 
 app = Flask(__name__)
-
-def create_connection(filename) -> sqlite3.Connection:
-    try:
-        connection = sqlite3.connect(filename)
-        print(f"Connection to SQLite DB successful: {args.filename}")
-        return connection
-    except sqlite3.Error as error:
-        print(f"Error: {error}")
-        return None
 
 
 @app.route("/")
@@ -44,3 +35,5 @@ if __name__ == '__main__':
     connection = create_connection(args.filename)
 
     app.run(debug=True)
+
+    connection.close()

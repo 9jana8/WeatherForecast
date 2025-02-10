@@ -1,16 +1,19 @@
 import sqlite3
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers import pipeline
 import re
 import difflib
 from datetime import datetime
+from db_utils import create_connection
 
 generator = pipeline("text-generation", model="gpt2")
-    
+
 def query_temperature_in_city(
         city: str,
-        date: str) -> float:
-    # asert da proveri da li je ovo u dobrom formatu
-    connection = sqlite3.connect("weather.db")
+        date: datetime,
+        connection: sqlite3.Connection) -> float:
+    assert isinstance(date, datetime), "date must be datetime object"
+    date_str = date.strftime("%Y-%m-%d")
+    print(date_str)
     cursor = connection.cursor()
     cursor.execute("""
         SELECT WeatherData.temperature_avg
@@ -18,17 +21,20 @@ def query_temperature_in_city(
         JOIN Cities ON WeatherData.city_id = Cities.id
         WHERE Cities.city = ?
         AND WeatherData.date = ?
-        """, (city, date))
+        """, (city, date_str))
     temperature = cursor.fetchone()
-    connection.close()
     return temperature[0] if temperature else None
 
 
 def query_max_temperature_in_time_span_per_city(
         city: str,
-        date_from: str,
-        date_to: str) -> float:
-    connection = sqlite3.connect("weather.db")
+        date_from: datetime,
+        date_to: datetime,
+        connection: sqlite3.Connection) -> float:
+    assert isinstance(date_from, datetime) and isinstance(date_to, datetime), "dates must be a datetime objects"
+    assert date_from <= date_to, "date_from needs to be before the date date_to"
+    date_from_str = date_from.strftime("%Y-%m-%d")
+    date_to_str = date_to.strftime("%Y-%m-%d")
     cursor = connection.cursor()
     cursor.execute("""
         SELECT MAX(WeatherData.temperature_max)
@@ -36,17 +42,20 @@ def query_max_temperature_in_time_span_per_city(
         JOIN Cities ON WeatherData.city_id = Cities.id
         WHERE Cities.city = ?
         AND WeatherData.date BETWEEN ? AND ?
-        """, (city, date_from, date_to))
+        """, (city, date_from_str, date_to_str))
     max_temperature = cursor.fetchone()[0]
-    connection.close()
     return max_temperature if max_temperature else None
 
 
 def query_min_temperature_in_time_span_per_city(
         city: str,
-        date_from: str,
-        date_to: str) -> float:
-    connection = sqlite3.connect("weather.db")
+        date_from: datetime,
+        date_to: datetime,
+        connection: sqlite3.Connection) -> float:
+    assert isinstance(date_to, datetime) and isinstance(date_from, datetime), "dates must be datetime objects"
+    assert date_from <= date_to, "date_from needs to be before, or the same day as date_to"
+    date_from_str = date_from.strftime("%Y-%m-%d")
+    date_to_str = date_to.strftime("%Y-%m-%d")
     cursor = connection.cursor()
     cursor.execute("""
         SELECT MIN(WeatherData.temperature_min)
@@ -54,40 +63,49 @@ def query_min_temperature_in_time_span_per_city(
         JOIN Cities ON WeatherData.city_id = Cities.id
         WHERE Cities.city = ?
         AND WeatherData.date BETWEEN ? AND ?
-        """, (city, date_from, date_to))
+        """, (city, date_from_str, date_to_str))
     min_temperature = cursor.fetchone()[0]
-    connection.close()
     return min_temperature if min_temperature else None
 
 
-def query_city_comparison(city1: str, city2: str, date: str) -> str:
-    connection = sqlite3.connect("weather.db")
+def query_city_comparison(
+        city1: str, 
+        city2: str, 
+        date: datetime, 
+        connection: sqlite3.Connection) -> str:
+    assert isinstance(date, datetime), "date must be an datetime object"
+    date_str = date.strftime("%Y-%m-%d")
     cursor = connection.cursor()
     cursor.execute("""
-        SELECT Cities.city, WeatherData.date, WeatherData.temperature_max 
-        FROM WeatherData
-        JOIN Cities ON WeatherData.city_id = Cities.id
-        WHERE Cities.city IN (?, ?)
-        AND WeatherData.date = ?
-        """, (city1, city2, date))
+        SELECT 
+            city1.city AS city1_alias, 
+            city2.city AS city2_alias, 
+            city1.temperature_max AS temperature1_alias, 
+            city2.temperature_max AS temperature2_alias,
+                CASE
+                    WHEN city1.temperature_max > city2.temperature_max THEN city1.city
+                    WHEN city2.temperature_max > city1.temperature_max THEN city2.city
+                    ELSE 'Both cities had the same temperature'
+                END AS higher_temp_city
+        FROM
+            WeatherData wd1    
+        JOIN
+            Cities city1 ON wd1.city_id = city1.id
+        JOIN
+            WeatherData wd2 ON wd2.city_id = city2.id
+        JOIN
+            Cities city2 ON wd2.city_id = city2.id
+        WHERE
+            wd1.date = ? AND wd2.date = ?
+            AND city1.city = ? AND city2.city = ? 
+        """, (date_str, date_str, city1, city2))
     rows = cursor.fetchall()
-    connection.close()
-    if len(rows) != 2:
-        return "Data not available for both cities on the given date."
-    temp1 = rows[0][1]
-    temp2 = rows[1][1]
-    if temp1 > temp2:
-        return f"{rows[0][0]} had a higher temperature ({temp1}°C) than {rows[1][0]} ({temp2}°C) on {date}."
-    elif temp2 > temp1:
-        return f"{rows[1][0]} had a higher temperature ({temp2}°C) than {rows[0][0]} ({temp1}°C) on {date}."
-    else:
-        return f"Both {city1} and {city2} had the same temperature ({temp1}°C) on {date}."
+    return rows
     
 
 
-def is_response_trustworthy(original, generated) -> bool:
-    generated_text = generated[0]["generated_text"]  
-    similarity = difflib.SequenceMatcher(None, original, generated_text).ratio()
+def is_response_trustworthy(original: str, generated: str) -> bool:
+    similarity = difflib.SequenceMatcher(None, original, generated).ratio()
     return similarity > 0.8
 
 
@@ -132,19 +150,18 @@ def generate_human_response(user_query) -> str:
     response = generator(f'Answer: {answer}', max_length=100, truncation=True)
     response_text = response[0]["generated_text"]
 
-    if is_response_trustworthy(answer, response):
+    if is_response_trustworthy(answer, response_text):
         return response_text
     else:
         return answer  # Use the original database response if GPT-2 hallucinates
 
 
 
-def get_unique_cities():
-    connection = sqlite3.connect("weather.db")
+def get_unique_cities(connection: sqlite3.Connection):
     cursor = connection.cursor()
     cursor.execute("SELECT city FROM Cities")
     cities = [row[0] for row in cursor.fetchall()]
-    connection.close()
+    print(type(cities)) # debuging line
     return cities
 
 
@@ -169,21 +186,16 @@ def extract_city_and_date(user_query: str):
     return found_cities, found_dates
 
 
-# Helping function to detect YYYY-MM-DD, MM-DD-YYYY, and Month DD, YYYY date formats for extract_city_and_date()    
-def convert_date_format(date_str: str) -> str:
-    try: 
-        return datetime.strptime(date_str, "%B %d, %Y").strftime("%Y-%m-%d")
-    except ValueError:
-        try: 
-            return datetime.strptime(date_str, "%m-%d-%Y").strftime("%Y-%m-%d")
+def convert_date_format(date_str: str) -> datetime | None:
+    for format in ("%B %d, %Y", "%m-%d-%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(date_str, format) # Return datetime object
         except ValueError:
-            try:
-                return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
-            except ValueError:
-                return None
+            continue # Try the next format
+    return None
 
 
-# Helping function to detect which query is needed    
+  
 def query_key_words(user_query: str):
     key_words = ['maximum', 'minimum', 'highest', 'temperature', 'between', 'freezing', 'degrees']
     found_words = []
