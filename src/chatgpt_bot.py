@@ -8,13 +8,14 @@ from datetime import datetime
 from typing import Optional, Tuple, Union
 
 
-API_KEY = "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"
+API_KEY = "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"
 URL = "https://openrouter.ai/api/v1/chat/completions"
 BASE_URL = "https://openrouter.ai/api/v1"
+MODEL = "mistralai/mistral-7b-instruct:free"
 
+# tests
 user_query = "What is the weather in Belgrade on 2020-10-01?"
 user_query1 = "What was the maximum temperature in Paris between 2020-10-01 and 2020-10-05?"
-
 
 client = openai.OpenAI(
     api_key=API_KEY,
@@ -22,7 +23,7 @@ client = openai.OpenAI(
 )
 
 
-def extract_city_and_date(user_query, model="mistralai/mistral-7b-instruct:free") -> dict:
+def extract_city_and_date(user_query, model=MODEL) -> dict:
     prompt_ = f"""
     Extract all cities and dates from the following query and return a valid JSON response.
     The output should strictly follow this format without any explanations:
@@ -48,7 +49,7 @@ def extract_city_and_date(user_query, model="mistralai/mistral-7b-instruct:free"
         return {'city': [], 'date': []}
 
 
-def determine_query_type(user_input: str, model="mistralai/mistral-7b-instruct:free") -> int:
+def determine_query_type(user_input: str, model=MODEL) -> int:
     prompt = f"""
     Analyze the user query to determine what type of weather question they are asking.
     Return:
@@ -116,11 +117,10 @@ def provide_params(user_input: str, connection: sqlite3.Connection) -> Optional[
         return None
 
 
-def generate_response(user_input: str, connection: sqlite3.Connection, model="mistralai/mistral-7b-instruct:free") -> str:
+def generate_response(user_input: str, connection: sqlite3.Connection, model=MODEL) -> str:
     query_number = determine_query_type(user_input)
     if query_number == 1:
         city_value, date_value, temp_value = provide_params(user_input, connection)
-        print(f"DEBUGGING {city_value, date_value, temp_value}")
     if query_number == 2:
         city_value, date_from_value, date_to_value, temp_value = provide_params(user_input, connection)
     if query_number == 3:

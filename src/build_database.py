@@ -3,14 +3,14 @@ from data_utils import load_data
 import argparse
 
 if __name__ == '__main__':
-    # Load the data
-    parser = argparse.ArgumentParser(description="Build SQLite database from .csv file")
-    parser.add_argument("filename", help="The name of the file to process")
+    parser = argparse.ArgumentParser(description="Process two files - .csv and .db file")
+    parser.add_argument("csv_file", help="The name of the .csv file to process")
+    parser.add_argument("db_file", help="The name of the .db file to process")
     args = parser.parse_args()
-    df = load_data(args.filename)
+    df = load_data(args.csv_file)
     print("database is being built")
 
-    connection = sqlite3.connect('weather.db')
+    connection = sqlite3.connect(args.db_file)
     cursor = connection.cursor()
 
     cursor.execute('PRAGMA foreign_keys = ON;')
@@ -70,3 +70,6 @@ if __name__ == '__main__':
         (city_id, row['date'].strftime('%Y-%m-%d'), row['tavg'], row['tmin'], row['tmax'], row['wdir'], row['wspd'], row['pres']))
     connection.commit()
     print("WeatherData table is filled")
+
+    connection.close()
+    print("Database connection closed")
