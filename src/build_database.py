@@ -7,9 +7,10 @@ if __name__ == '__main__':
     parser.add_argument("csv_file", help="The name of the .csv file to process")
     parser.add_argument("db_file", help="The name of the .db file to process")
     args = parser.parse_args()
+    
     df = load_data(args.csv_file)
-    print("database is being built")
 
+    print("database is being built")
     connection = sqlite3.connect(args.db_file)
     cursor = connection.cursor()
 
@@ -23,8 +24,7 @@ if __name__ == '__main__':
         country TEXT NOT NULL,
         lat FLOAT,
         lon FLOAT
-    )"""
-    )
+    )""")
     connection.commit()
 
     # Create table WeatherData
@@ -40,8 +40,7 @@ if __name__ == '__main__':
         wind_speed FLOAT,
         pressure FLOAT,
         FOREIGN KEY(city_id) REFERENCES Cities(id)
-    )"""
-    )
+    )""")
     connection.commit()
 
     # Indexing columns for faster queries
