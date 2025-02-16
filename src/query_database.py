@@ -17,7 +17,9 @@ def query_temperature_in_city(
         AND WeatherData.date = ?
         """, (city, date_str))
     temperature = cursor.fetchone()
-    return temperature[0] if temperature else None
+    if temperature:
+        return temperature[0]
+    return None
 
 
 def query_max_temperature_in_time_span_per_city(
@@ -38,7 +40,9 @@ def query_max_temperature_in_time_span_per_city(
         AND WeatherData.date BETWEEN ? AND ?
         """, (city, date_from_str, date_to_str))
     max_temperature = cursor.fetchone()[0]
-    return max_temperature if max_temperature else None
+    if max_temperature and max_temperature[0] is not None:
+        return max_temperature[0]
+    return None
 
 
 def query_min_temperature_in_time_span_per_city(
@@ -59,39 +63,40 @@ def query_min_temperature_in_time_span_per_city(
         AND WeatherData.date BETWEEN ? AND ?
         """, (city, date_from_str, date_to_str))
     min_temperature = cursor.fetchone()[0]
-    return min_temperature if min_temperature else None
+    if min_temperature and min_temperature[0] is not None:
+        return min_temperature[0]
+    return None
 
 
-def query_city_comparison(
-        city1: str, 
-        city2: str, 
-        date: datetime, 
-        connection: sqlite3.Connection) -> str:
+def query_city_comparison(city1: str, city2: str, date: datetime, connection: sqlite3.Connection) -> str:
     assert isinstance(date, datetime), "date must be an datetime object"
     date_str = date.strftime("%Y-%m-%d")
     cursor = connection.cursor()
     cursor.execute("""
         SELECT 
-            city1.city AS city1_alias, 
-            city2.city AS city2_alias, 
-            city1.temperature_max AS temperature1_alias, 
-            city2.temperature_max AS temperature2_alias,
+            c1.city AS city1_alias, 
+            c2.city AS city2_alias, 
+            w1.temperature_max AS temperature1_alias, 
+            w2.temperature_max AS temperature2_alias,
                 CASE
-                    WHEN city1.temperature_max > city2.temperature_max THEN city1.city
-                    WHEN city2.temperature_max > city1.temperature_max THEN city2.city
+                    WHEN w1.temperature_max > w2.temperature_max THEN w1.temperature_max
+                    WHEN w2.temperature_max > w1.temperature_max THEN w2.temperature_max
                     ELSE 'Both cities had the same temperature'
-                END AS higher_temp_city
+                END AS higher_temp
         FROM
-            WeatherData wd1    
+            WeatherData w1    
         JOIN
-            Cities city1 ON wd1.city_id = city1.id
+            Cities c1 ON w1.city_id = c1.id
         JOIN
-            WeatherData wd2 ON wd2.city_id = city2.id
+            WeatherData w2 ON w2.city_id = c2.id
         JOIN
-            Cities city2 ON wd2.city_id = city2.id
+            Cities c2 ON w2.city_id = c2.id
         WHERE
-            wd1.date = ? AND wd2.date = ?
-            AND city1.city = ? AND city2.city = ? 
+            w1.date = ? AND w2.date = ?
+            AND c1.city = ? AND c2.city = ? 
         """, (date_str, date_str, city1, city2))
-    rows = cursor.fetchall()
-    return rows
+    result = cursor.fetchone()
+    if result:
+        _, _, _, _, higher_temp = result
+        return higher_temp if higher_temp != 'Both cities had the same temperature' else '0'
+    return None

@@ -1,54 +1,28 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weather Query</title>
-    <link rel="stylesheet" href="static/css/styles.css">
+    <title>Weather Bot</title>
+    <link rel="stylesheet" type="text/css" href=".\static\css\styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Talk to Your Personal Assistant and Discover the Weather Forecast You’re Interested In!</h1>
-        <form id="weatherForm">
-            <textarea id="userQuery" placeholder="Enter your query" required></textarea>
-            <button type="submit">Submit</button>
-        </form>
-        <div id="response"></div>
-    </div>
 
-    <script>
-        const form = document.getElementById('weatherForm');
-        const responseDiv = document.getElementById('response');
+    <h1>🌦️ Weather Bot Interface</h1>
 
-        form.addEventListener('submit', function (event) {
-            event.preventDefault();
+    <form method="POST">
+        <label for="user_query">Enter your query:</label><br>
+        <textarea id="user_query" name="user_query" rows="3" cols="50" placeholder="e.g. What was the temperature in Belgrade on 01-10-2020?"></textarea><br><br>
+        <input type="submit" value="Submit">
+    </form>
 
-            const userQuery = document.getElementById('userQuery').value;
-            
-            fetch('http://127.0.0.1:5000/query', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ user_query: userQuery }),
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.response) {
-                    responseDiv.innerHTML = `<p><strong>Response:</strong> ${data.response}</p>`;
-                } else {
-                    responseDiv.innerHTML = `<p><strong>Error:</strong> ${data.error}</p>`;
-                }
-            })
-            .catch(error => {
-                responseDiv.innerHTML = `<p><strong>Error:</strong> ${error}</p>`;
-            });
-        });
-    </script>
+    {% if user_query %}
+        <h2>🗨️ User Query:</h2>
+        <p>{{ user_query }}</p>
+    {% endif %}
+
+    {% if assistant_response %}
+        <h2>💬 Weather Bot Response:</h2>
+        <p>{{ assistant_response }}</p>
+    {% endif %}
+
 </body>
 </html>
